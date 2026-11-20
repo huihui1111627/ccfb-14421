@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ClockQL 拍卖查询检查器</title>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #171c22; --panel2: #1d242c; --line: #2a333d;
+    --ink: #e6edf3; --dim: #8b98a5; --accent: #61c3a1; --accent2: #7aa2f7;
+    --warn: #e0af68; --err: #f7768e; --ok: #9ece6a; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 16px; background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
+  header .sub { color: var(--dim); font-size: 12px; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 22px 40px; }
+  .full { grid-column: 1 / -1; }
+  section.panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    display: flex; flex-direction: column; min-width: 0;
+  }
+  section.panel > h2 {
+    margin: 0; padding: 10px 14px; font-size: 13px; font-weight: 600;
+    border-bottom: 1px solid var(--line); background: var(--panel2);
+    display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  }
+  section.panel > h2 .badge { font-weight: 400; }
+  .body { padding: 12px 14px; overflow: auto; max-height: 62vh; }
+  textarea {
+    width: 100%; min-height: 120px; resize: vertical; background: #0d1117; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-family: var(--mono);
+    font-size: 13px; line-height: 1.55; outline: none;
+  }
+  textarea:focus { border-color: var(--accent2); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  button {
+    background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #08110d; border-color: var(--accent); font-weight: 600; }
+  button:hover { border-color: var(--accent2); }
+  .examples { display: flex; gap: 6px; flex-wrap: wrap; }
+  .examples button { font-size: 12px; padding: 4px 9px; color: var(--dim); }
+  code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
+  pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
+  .badge {
+    font-size: 11px; padding: 1px 7px; border-radius: 20px; background: #22303b; color: var(--dim);
+  }
+  .badge.ok { background: #1e3a2b; color: var(--ok); }
+  .badge.bad { background: #3a1f26; color: var(--err); }
+  .badge.warn { background: #3a3320; color: var(--warn); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); padding: 0 8px; background: var(--panel2); }
+  .tabs button {
+    border: none; background: transparent; border-bottom: 2px solid transparent; border-radius: 0;
+    padding: 8px 12px; color: var(--dim); font-size: 12.5px;
+  }
+  .tabs button.active { color: var(--ink); border-bottom-color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: left; padding: 5px 9px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; position: sticky; top: 0; background: var(--panel); }
+  td.mono, th.mono { font-family: var(--mono); }
+  .num { font-family: var(--mono); color: var(--dim); }
+  .errline { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .errline .loc { font-family: var(--mono); color: var(--accent2); white-space: nowrap; min-width: 62px; }
+  .errline .code { font-size: 11px; padding: 0 6px; border-radius: 4px; background: #2a2029; color: var(--err); white-space: nowrap; height: fit-content; }
+  .errline .msg { flex: 1; }
+  .hints { color: var(--dim); font-size: 12px; margin-top: 4px; }
+  .hints div::before { content: "› "; color: var(--accent); }
+  .empty { color: var(--dim); padding: 10px 2px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 12.5px; }
+  .kv .k { color: var(--dim); }
+  .rule-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .rule-head .name { font-family: var(--mono); color: var(--accent); }
+  .rule-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+  .rule-diff > div { background: #0d1117; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; overflow: auto; max-height: 220px; }
+  .rule-diff .lbl { font-size: 11px; color: var(--dim); margin-bottom: 5px; }
+  .rulectx { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px dashed var(--line); }
+  .pass { margin-bottom: 12px; }
+  .pass h3 { margin: 0 0 6px; font-size: 12px; color: var(--dim); font-weight: 500; }
+  .diff-add { color: var(--ok); }
+  .diff-del { color: var(--err); }
+  .result-banner { padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; }
+  .result-banner.ok { background: #16291f; border: 1px solid #27502f; }
+  .result-banner.bad { background: #2c1a1f; border: 1px solid #52262f; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .muted { color: var(--dim); }
+  a { color: var(--accent2); }
+  .schema-table { margin-bottom: 14px; }
+  .schema-table h3 { font-size: 12px; color: var(--accent); margin: 0 0 4px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ClockQL · 拍卖查询检查器</h1>
+  <span class="sub">解析 · 名字绑定 · 类型推导 · 规则改写 · 逐行解释执行</span>
+  <span class="badge" id="status">就绪</span>
+</header>
+
+<main>
+  <section class="panel full">
+    <h2>查询
+      <span class="muted" style="font-weight:400;font-size:12px">Ctrl/Cmd + Enter 运行</span>
+    </h2>
+    <div class="body">
+      <textarea id="sql" spellcheck="false">WITH recent AS (
+  SELECT lot_id, stems, price_tick, discount
+  FROM trades
+  WHERE price_tick < 90.00::tick
+)
+SELECT l.grower,
+       count(*)             AS lots,
+       sum(t.stems)         AS stems,
+       round_to(avg(t.discount), 2) AS avg_disc,
+       min(t.price_tick)    AS best_tick
+FROM lots l
+LEFT JOIN recent t ON t.lot_id = l.lot_id
+WHERE t.price_tick IS NOT NULL AND l.stems > 10
+GROUP BY l.grower
+ORDER BY stems DESC
+LIMIT 20</textarea>
+      <div class="row">
+        <button class="primary" id="run">运行</button>
+        <button id="explain">仅分析</button>
+        <div class="examples" id="examples"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>语法树 <span class="badge" id="ast-badge">—</span></h2>
+    <div class="body"><pre id="ast"></pre></div>
+  </section>
+
+  <section class="panel">
+    <h2>报错列表 <span class="badge" id="err-badge">0</span></h2>
+    <div class="body" id="errors"><div class="empty">无</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>词法记号 <span class="badge" id="tok-badge">0</span></h2>
+    <div class="body" id="tokens"><div class="empty">—</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>名字绑定结果 <span class="badge" id="bind-badge">—</span></h2>
+    <div class="body" id="binding"><div class="empty">—</div></div>
+  </section>
+
+  <section class="panel full">
+    <h2>逻辑计划与改写 <span class="badge" id="rule-badge">—</span></h2>
+    <div class="body">
+      <div class="tabs" id="plantabs">
+        <button data-tab="before" class="active">改写前</button>
+        <button data-tab="after">改写后</button>
+        <button data-tab="rules">每条规则的改写</button>
+        <button data-tab="passes">按轮次</button>
+        <button data-tab="result">执行结果</button>
+      </div>
+      <div style="padding-top:12px">
+        <div data-pane="before"><pre id="plan-before" class="muted">—</pre></div>
+        <div data-pane="after" hidden><pre id="plan-after" class="muted">—</pre></div>
+        <div data-pane="rules" hidden id="rules"></div>
+        <div data-pane="passes" hidden id="passes"></div>
+        <div data-pane="result" hidden id="result"><div class="empty">尚未执行</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>表结构</h2>
+    <div class="body" id="schema"><div class="empty">—</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>验证统计 <span class="badge" id="verify-badge">—</span></h2>
+    <div class="body" id="verify"><div class="empty">未加载验证结果（启动时传 -verify-json）</div></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const EXAMPLES = [
+  ["常量折叠 + 外连接降级", `SELECT l.lot_id, t.price_tick
+FROM lots l LEFT JOIN trades t ON t.lot_id = l.lot_id
+WHERE t.price_tick IS NOT NULL AND 2 + 3 * 4 > 10`],
+  ["恒假子树", `SELECT l.lot_id FROM lots l
+WHERE (l.stems > 400 AND l.stems < 100) OR l.grade = 'A1'`],
+  ["单次 CTE 内联", `WITH once AS (
+  SELECT lot_id, stems FROM lots WHERE grade = 'A1'
+)
+SELECT o.lot_id, o.stems FROM once o WHERE o.stems > 5`],
+  ["相关子查询 / 侧向连接", `SELECT l.lot_id, q.n
+FROM lots l
+JOIN LATERAL (
+  SELECT count(*) AS n FROM trades t
+  WHERE t.lot_id = l.lot_id AND t.price_tick < 80.00::tick
+) q ON q.n > 0`],
+  ["定点小数与钟面刻度", `SELECT tick_round(t.price_tick) AS tick,
+       tick_bucket(t.price_tick, 5) AS bucket,
+       t.stems / 7 AS per_bunch,
+       tick_span(t.price_tick, 80.00::tick) AS span
+FROM trades t`],
+  ["多处语法错误", `SELECT lot_id, FROM lots WHERE stems > AND grade =`],
+  ["钟面刻度隐式转换", `SELECT lot_id FROM lots WHERE base_tick = 95.00`],
+  ["列名歧义", `SELECT lot_id FROM lots l JOIN trades t ON t.lot_id = l.lot_id`],
+  ["CNF 展开", `SELECT l.lot_id FROM lots l
+WHERE (l.stems > 1 AND l.grade = 'A1') OR (l.stems < 5 AND l.grade = 'B1')`],
+];
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+}
+
+function setStatus(text, cls) {
+  const el = $("status");
+  el.textContent = text;
+  el.className = "badge " + (cls || "");
+}
+
+async function post(path, body) {
+  const r = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+let lastAnalysis = null;
+
+async function analyze(runAfter) {
+  setStatus("分析中…", "warn");
+  let a;
+  try {
+    a = await post("/api/analyze", {sql: $("sql").value});
+  } catch (e) {
+    setStatus("请求失败", "bad");
+    return;
+  }
+  lastAnalysis = a;
+  renderAST(a);
+  renderErrors(a);
+  renderTokens(a);
+  renderBinding(a);
+  renderPlans(a);
+  if (runAfter) {
+    await runQuery(a);
+  } else {
+    setStatus(a.errors && a.errors.length ? "有错误" : "分析完成", a.errors && a.errors.length ? "bad" : "ok");
+  }
+}
+
+function renderAST(a) {
+  const n = a.ast ? a.ast.length : 0;
+  $("ast-badge").textContent = a.ast ? "已生成" : "无";
+  $("ast-badge").className = "badge " + (a.ast ? "ok" : "bad");
+  $("ast").textContent = a.ast || "—";
+  // Pretty-print keywords for readability.
+  if (a.ast) {
+    $("ast").innerHTML = esc(a.ast).replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|JOIN|LEFT|RIGHT|FULL|INNER|CROSS|LATERAL|ON|AS|AND|OR|NOT|CASE|WHEN|THEN|ELSE|END|WITH|UNION|EXCEPT|INTERSECT|ALL|DISTINCT|CAST|BETWEEN|IN|LIKE|IS|NULL)\b/g, '<span style="color:var(--accent2)">$1</span>');
+  }
+}
+
+function renderErrors(a) {
+  const errs = a.errors || [];
+  $("err-badge").textContent = errs.length ? errs.length + " 个" : "0";
+  $("err-badge").className = "badge " + (errs.length ? "bad" : "ok");
+  const box = $("errors");
+  if (!errs.length) {
+    box.innerHTML = '<div class="empty">无错误</div>';
+    return;
+  }
+  const phaseName = {parse:"语法", bind:"绑定", rewrite:"改写"};
+  box.innerHTML = errs.map(e => `
+    <div class="errline">
+      <span class="loc">${e.line}:${e.col}</span>
+      <span class="code">${esc(e.code)}</span>
+      <div class="msg">
+        <div>${esc(e.msg)}</div>
+        <div class="muted" style="font-size:11px;margin-top:2px">阶段: ${phaseName[e.phase] || esc(e.phase)}</div>
+        ${e.hints && e.hints.length ? `<div class="hints">${e.hints.map(h=>`<div>${esc(h)}</div>`).join("")}</div>` : ""}
+      </div>
+    </div>`).join("");
+}
+
+function renderTokens(a) {
+  const toks = a.tokens || [];
+  $("tok-badge").textContent = toks.length;
+  const shown = toks.slice(0, 500);
+  $("tokens").innerHTML = `<table><thead><tr><th>位置</th><th>类别</th><th>文本</th></tr></thead><tbody>` +
+    shown.map(t => `<tr><td class="num">${t.line}:${t.col}</td><td>${esc(t.kind)}</td><td class="mono">${esc(t.text)}</td></tr>`).join("") +
+    `</tbody></table>` + (toks.length > shown.length ? `<div class="muted">…共 ${toks.length} 个</div>` : "");
+}
+
+function renderBinding(a) {
+  const cols = a.schema || [];
+  $("bind-badge").textContent = cols.length ? cols.length + " 列" : "—";
+  $("bind-badge").className = "badge " + (cols.length ? "ok" : "");
+  let html = "";
+  if (a.bound) {
+    html += `<div class="kv" style="margin-bottom:12px">
+      <div class="k">根节点</div><div class="mono">${esc(a.bound)}</div>
+    </div>`;
+  }
+  if (cols.length) {
+    html += `<table><thead><tr><th>#</th><th>列名</th><th>类型</th><th>来源</th><th>可空</th></tr></thead><tbody>` +
+      cols.map((c,i) => `<tr><td class="num">${i+1}</td><td class="mono">${esc(c.name)}</td><td class="mono">${esc(c.type)}</td><td class="mono muted">${esc(c.qualifier||"—")}</td><td>${c.nullable?"是":"否"}</td></tr>`).join("") +
+      `</tbody></table>`;
+  }
+  if (a.ctes && a.ctes.length) {
+    html += `<h3 style="font-size:12px;color:var(--accent);margin:14px 0 4px">公用表表达式</h3>`;
+    html += a.ctes.map(c => `<div class="kv" style="margin-bottom:6px">
+        <div class="k">${esc(c.name)}</div><div>列 (${(c.cols||[]).map(esc).join(", ")}) · 被引用 ${c.refs} 次</div>
+      </div>`).join("");
+  }
+  $("binding").innerHTML = html || '<div class="empty">—</div>';
+}
+
+function renderPlans(a) {
+  $("plan-before").textContent = a.planBefore || "—";
+  $("plan-after").textContent = a.planAfter || "—";
+  const rules = a.rules || [];
+  const applied = rules.reduce((s,r)=>s+(r.applied||0),0);
+  $("rule-badge").textContent = applied ? applied + " 次改写" : "无改写";
+  $("rule-badge").className = "badge " + (applied ? "ok" : "");
+
+  const ruleScope = $("rules");
+  ruleScope.innerHTML = rules.length ? rules.map(r => `
+    <div class="rulectx">
+      <div class="rule-head">
+        <span class="name">${esc(r.name)}</span>
+        <span class="badge ${r.applied?"ok":""}">生效 ${r.applied||0}</span>
+        <span class="badge">检查 ${r.checks||0}</span>
+        <span class="badge ${r.rejected?"warn":""}">拒绝 ${r.rejected||0}</span>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:2px">${esc(r.doc||"")}</div>
+      ${r.cases && r.cases.length ? `<div class="hints" style="margin-top:6px">${r.cases.map(c=>`<div>${esc(c)}</div>`).join("")}</div>` : ""}
+      ${r.before && r.after ? `<div class="rule-diff">
+        <div><div class="lbl">改写前</div><pre>${highlightTree(r.before, r.after, "del")}</pre></div>
+        <div><div class="lbl">改写后</div><pre>${highlightTree(r.after, r.before, "add")}</pre></div>
+      </div>` : ""}
+    </div>`).join("") : '<div class="empty">无规则信息</div>';
+
+  const passes = a.passes || [];
+  $("passes").innerHTML = passes.length ? passes.map(p => `
+    <div class="pass"><h3>第 ${p.pass} 轮${p.steps?` · ${p.steps} 条规则参与`:""}</h3>
+      <pre>${esc(p.tree)}</pre></div>`).join("") : '<div class="empty">无</div>';
+
+  const warns = a.warnings || [];
+  if (warns.length) {
+    ruleScope.insertAdjacentHTML("afterbegin",
+      warns.map(w => `<div class="errline"><span class="loc">${w.line}:${w.col}</span><span class="code">${esc(w.code)}</span><div class="msg">${esc(w.msg)}</div></div>`).join(""));
+  }
+}
+
+// highlightTree marks lines that appear only on one side of a tree diff.
+function highlightTree(tree, other, cls) {
+  const otherLines = new Set((other || "").split("\n"));
+  return (tree || "").split("\n").map(line => {
+    const core = line.replace(/^[│├└─ ]+/, "");
+    let inOther = false;
+    otherLines.forEach(o => { if (o.replace(/^[│├└─ ]+/, "") === core) inOther = true; });
+    return inOther ? esc(line) : `<span class="diff-${cls}">${esc(line)}</span>`;
+  }).join("\n");
+}
+
+async function runQuery(a) {
+  if (a && a.errors && a.errors.length) {
+    setStatus("有错误，未执行", "bad");
+    $("result").innerHTML = '<div class="result-banner bad">存在错误，无法执行</div>';
+    return;
+  }
+  setStatus("执行中…", "warn");
+  let r;
+  try {
+    r = await post("/api/run", {sql: $("sql").value});
+  } catch (e) {
+    setStatus("执行失败", "bad");
+    return;
+  }
+  let html = "";
+  if (!r.ok) {
+    html = `<div class="result-banner bad">${esc(r.error || "失败")}</div>`;
+  } else {
+    const cls = r.equal ? "ok" : "bad";
+    html += `<div class="result-banner ${cls}">
+      ${r.equal ? "改写前后结果完全一致（含空值、重复行与小数位）" : "改写前后结果不一致"}
+      · ${r.rowCount} 行 · 输出模式${r.schemaEqual ? "一致" : "不一致"}
+      ${r.execError ? ` · 原计划错误: ${esc(r.execError)}` : ""}
+      ${r.afterError ? ` · 改写后错误: ${esc(r.afterError)}` : ""}
+    </div>`;
+    html += renderResultTable(r.columns || [], r.before || [], "改写前");
+    html += renderResultTable(r.columns || [], r.after || [], "改写后");
+  }
+  $("result").innerHTML = html;
+  setStatus(r.ok ? (r.equal ? "运行完成·结果一致" : "运行完成·结果不一致") : "运行失败", r.ok && r.equal ? "ok" : "bad");
+  activateTab("result");
+}
+
+function renderResultTable(cols, rows, title) {
+  if (!rows.length) return `<h3 style="font-size:12px;color:var(--dim);margin:12px 0 4px">${title}</h3><div class="empty">0 行</div>`;
+  return `<h3 style="font-size:12px;color:var(--dim);margin:12px 0 4px">${title} · ${rows.length} 行</h3>
+    <table><thead><tr>${cols.map(c=>`<th class="mono">${esc(c.name)}<div class="muted" style="font-weight:400">${esc(c.type)}</div></th>`).join("")}</tr></thead>
+    <tbody>${rows.slice(0,100).map(row=>`<tr>${row.map(v=>`<td class="mono">${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function activateTab(name) {
+  document.querySelectorAll("#plantabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== name);
+}
+
+document.querySelectorAll("#plantabs button").forEach(b => b.onclick = () => activateTab(b.dataset.tab));
+
+async function loadSchema() {
+  try {
+    const r = await fetch("/api/schema");
+    const s = await r.json();
+    $("schema").innerHTML = (s.tables||[]).map(t => `
+      <div class="schema-table"><h3>${esc(t.name)}</h3>
+        <div class="muted" style="font-size:11px;margin-bottom:4px">${esc(t.note||"")}</div>
+        <table><tbody>${(t.cols||[]).map(c=>`<tr><td class="mono">${esc(c.name)}</td><td class="mono muted">${esc(c.type)}</td><td>${c.nullable?"null":"not null"}</td></tr>`).join("")}</tbody></table>
+      </div>`).join("") +
+      `<div class="schema-table"><h3>函数</h3><div class="mono muted" style="font-size:12px">${(s.functions||[]).map(esc).join(" · ")}</div></div>`;
+  } catch (e) {
+    $("schema").innerHTML = '<div class="empty">无法加载</div>';
+  }
+}
+
+async function loadVerify() {
+  try {
+    const r = await fetch("/api/verify");
+    const v = await r.json();
+    if (!v.available) return;
+    const x = v.result;
+    $("verify-badge").textContent = "已加载";
+    $("verify-badge").className = "badge ok";
+    const ruleRows = Object.keys(x.rules.applied || {}).sort().map(n => `
+      <tr><td class="mono">${esc(n)}</td><td class="num">${x.rules.applied[n]||0}</td>
+      <td class="num">${x.rules.checked[n]||0}</td><td class="num">${x.rules.rejected[n]||0}</td>
+      <td class="num">${x.rules.queries[n]||0}</td></tr>`).join("");
+    $("verify").innerHTML = `
+      <div class="kv" style="margin-bottom:10px">
+        <div class="k">合法查询</div><div>${x.validOK}/${x.validCases} 改写前后一致</div>
+        <div class="k">错误查询</div><div>${x.badOK}/${x.badCases} 全部错误位置对上（漏 ${x.missedDiags}，多 ${x.extraDiags}）</div>
+        <div class="k">用时</div><div>${(x.duration/1e6).toFixed(1)} ms</div>
+      </div>
+      <table><thead><tr><th>规则</th><th>生效</th><th>检查</th><th>拒绝</th><th>涉及查询</th></tr></thead>
+      <tbody>${ruleRows}</tbody></table>`;
+  } catch (e) { /* ignore */ }
+}
+
+$("run").onclick = () => analyze(true);
+$("explain").onclick = () => analyze(false);
+$("sql").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); analyze(true); }
+});
+
+$("examples").innerHTML = EXAMPLES.map(([name], i) => `<button data-i="${i}">${esc(name)}</button>`).join("");
+document.querySelectorAll("#examples button").forEach(b => b.onclick = () => {
+  $("sql").value = EXAMPLES[+b.dataset.i][1];
+  analyze(false);
+});
+
+loadSchema();
+loadVerify();
+analyze(false);
+</script>
+</body>
+</html>
